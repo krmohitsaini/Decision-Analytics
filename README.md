@@ -2,6 +2,8 @@
 
 Minimum Flask + React project to confirm the backend/API/frontend structure works before adding real data connections or analytics logic.
 
+For the broader application direction, see [PLAN.md](./PLAN.md).
+
 ## Project Structure
 
 ```text
@@ -14,15 +16,26 @@ frontend/   Vite React UI
 ```bash
 cd backend
 python3 -m venv .venv
+py -m venv .venv -- on windows machine
 source .venv/bin/activate
+-- on windows machine - 
+first - 
+  Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+then - 
+  .venv\Scripts\Activate
 pip install -r requirements.txt
+
+-- it'll run the backend on default port 5000
 python app.py
+else, run FLASK_PORT=5050 python app.py
 ```
 
 Backend URL:
 
 ```text
 http://localhost:5000/api/health
+http://localhost:5050/api/health - on mac as 5000 is for AirPlay
+
 ```
 
 Expected response:
@@ -40,8 +53,18 @@ Open a second terminal:
 
 ```bash
 cd frontend
-npm install
+-- on windows machine - 
+first - 
+  Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+then - 
+npm install --verbose
+-- if above one fails, try -
+  npm config set strict-ssl false
+  npm install --verbose
 npm run dev
+  or
+  VITE_API_BASE_URL=http://localhost:5050 npm run dev
+  
 ```
 
 Frontend URL:

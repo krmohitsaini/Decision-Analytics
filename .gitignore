@@ -17,3 +17,6 @@ npm-debug.log*
 
 # Local generated artifacts
 artifacts/
+
+PLAN.md
+
