@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
 import "./App.css";
+import AgentChannelDeepDive from "./pages/AgentChannelDeepDive.jsx";
+import CommercialPerformance from "./pages/CommercialPerformance.jsx";
+import CustomerSitePortfolio from "./pages/CustomerSitePortfolio.jsx";
+import DataQuality from "./pages/DataQuality.jsx";
+import DigitalEngagement from "./pages/DigitalEngagement.jsx";
+import ProductPlanAdoption from "./pages/ProductPlanAdoption.jsx";
+import RetentionDeepDive from "./pages/RetentionDeepDive.jsx";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ||
@@ -7,33 +14,73 @@ const API_BASE_URL =
 
 const navSections = [
   {
-    items: [{ label: "Dashboard", icon: "dashboard", isActive: true }],
+    items: [{ key: "dashboard", label: "Dashboard", icon: "dashboard" }],
   },
   {
     title: "Analysis",
     items: [
-      { label: "Analytics", icon: "analytics" },
-      { label: "Trends", icon: "trends" },
-    ],
-  },
-  {
-    title: "Insights",
-    items: [
-      { label: "Distribution", icon: "distribution" },
-      { label: "AI Insights", icon: "insights" },
-      { label: "Customers", icon: "customers" },
+      { key: "retention", label: "Retention Deep Dive", icon: "analytics" },
+      { key: "commercial", label: "Commercial Performance", icon: "trends" },
+      { key: "portfolio", label: "Customer & Site Portfolio", icon: "distribution" },
+      { key: "products", label: "Product and Plan Adoption", icon: "app" },
+      { key: "digital", label: "Digital Engagement", icon: "insights" },
+      { key: "agents", label: "Agent and Channel Deep Dive", icon: "customers" },
+      { key: "quality", label: "Data Quality", icon: "dashboard" },
     ],
   },
 ];
+
+const defaultFilters = {
+  scope: "current",
+  channel: "",
+  commodity: "",
+};
+
+const analysisPageComponents = {
+  retention: RetentionDeepDive,
+  commercial: CommercialPerformance,
+  portfolio: CustomerSitePortfolio,
+  products: ProductPlanAdoption,
+  digital: DigitalEngagement,
+  agents: AgentChannelDeepDive,
+  quality: DataQuality,
+};
 
 const fallbackSummary = {
   asOfDate: "2026-09-09",
   dataset: {
     name: "synthetic_energy_customer_sites.csv",
+    sourceType: "csv",
     grain: "One site-level contract episode per row",
     businessPartners: 100000,
     sites: 626767,
     episodes: 992631,
+  },
+  filters: {
+    scope: "current",
+    channel: "",
+    commodity: "",
+    availableScopes: [
+      { label: "Current portfolio", value: "current" },
+      { label: "All contract episodes", value: "all" },
+    ],
+    channels: [
+      { label: "Broker", count: 91241 },
+      { label: "Digital", count: 125551 },
+      { label: "Direct Sale", count: 160539 },
+      { label: "Door-to-Door", count: 59691 },
+      { label: "Field Sales", count: 58950 },
+      { label: "IBTS", count: 137857 },
+      { label: "Partner", count: 72050 },
+      { label: "Referral", count: 72291 },
+      { label: "Retail Kiosk", count: 20353 },
+      { label: "Telesales", count: 214108 },
+    ],
+    commodities: [
+      { label: "BOTH", count: 228441 },
+      { label: "ELE", count: 416793 },
+      { label: "GAS", count: 347397 },
+    ],
   },
   kpis: {
     totalBusinessPartners: 100000,
@@ -171,6 +218,22 @@ function compactNumber(value) {
   }).format(value || 0);
 }
 
+function buildDashboardSummaryUrl(filters) {
+  const params = new URLSearchParams();
+
+  params.set("scope", filters.scope);
+
+  if (filters.channel) {
+    params.set("channel", filters.channel);
+  }
+
+  if (filters.commodity) {
+    params.set("commodity", filters.commodity);
+  }
+
+  return `${API_BASE_URL}/api/dashboard/summary?${params.toString()}`;
+}
+
 function KpiCard({ label, value, helper, tone = "neutral" }) {
   return (
     <article className={`kpi-card kpi-card-${tone}`}>
@@ -228,18 +291,23 @@ function MonthlyStarts({ items }) {
 }
 
 function App() {
+  const [selectedPage, setSelectedPage] = useState("dashboard");
   const [health, setHealth] = useState(null);
   const [summary, setSummary] = useState(null);
+  const [filters, setFilters] = useState(defaultFilters);
   const [error, setError] = useState("");
   const [summaryError, setSummaryError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     async function loadDashboard() {
+      setIsLoading(true);
+      setSummaryError("");
+
       try {
         const [healthResult, summaryResult] = await Promise.allSettled([
           fetch(`${API_BASE_URL}/api/health`),
-          fetch(`${API_BASE_URL}/api/dashboard/summary`),
+          fetch(buildDashboardSummaryUrl(filters)),
         ]);
 
         if (healthResult.status === "fulfilled" && healthResult.value.ok) {
@@ -264,10 +332,11 @@ function App() {
     }
 
     loadDashboard();
-  }, []);
+  }, [filters]);
 
   const dashboardSummary = summary || fallbackSummary;
   const { dataset, kpis, mixes, trends } = dashboardSummary;
+  const availableFilters = dashboardSummary.filters || fallbackSummary.filters;
   const activeSitesGap = Math.max(kpis.totalSites - kpis.activeSites, 0);
   const portfolioItems = [
     {
@@ -278,7 +347,7 @@ function App() {
     {
       label: "Inactive / closed sites",
       count: activeSitesGap,
-      percentage: 100 - kpis.activeSiteRate,
+      percentage: kpis.totalSites ? 100 - kpis.activeSiteRate : 0,
     },
   ];
   const executiveKpis = [
@@ -319,6 +388,24 @@ function App() {
       tone: "teal",
     },
   ];
+  const filterSummary = [
+    filters.scope === "all" ? "All contract episodes" : "Current portfolio",
+    filters.channel || "All channels",
+    filters.commodity || "All commodities",
+  ].join(" / ");
+  const currentPageLabel =
+    navSections
+      .flatMap((section) => section.items)
+      .find((item) => item.key === selectedPage)?.label || "Dashboard";
+
+  function updateFilter(name, value) {
+    setFilters((currentFilters) => ({
+      ...currentFilters,
+      [name]: value,
+    }));
+  }
+
+  const SelectedAnalysisPage = analysisPageComponents[selectedPage];
 
   return (
     <main className="app-shell">
@@ -340,8 +427,9 @@ function App() {
 
               {section.items.map((item) => (
                 <button
-                  className={`nav-item${item.isActive ? " nav-item-active" : ""}`}
+                  className={`nav-item${selectedPage === item.key ? " nav-item-active" : ""}`}
                   key={item.label}
+                  onClick={() => setSelectedPage(item.key)}
                   type="button"
                 >
                   <NavIcon name={item.icon} />
@@ -356,8 +444,10 @@ function App() {
       <section className="workspace" aria-labelledby="page-title">
         <header className="topbar">
           <div>
-            <p className="eyebrow">Executive Summary</p>
-            <h1 id="page-title">Dashboard</h1>
+            <p className="eyebrow">
+              {selectedPage === "dashboard" ? "Executive Summary" : "Analysis"}
+            </p>
+            <h1 id="page-title">{currentPageLabel}</h1>
           </div>
 
           <div className="status-pill" aria-live="polite">
@@ -372,6 +462,7 @@ function App() {
           </div>
         </header>
 
+        {selectedPage === "dashboard" ? (
         <div className="dashboard-page">
           <section className="dashboard-command-row" aria-label="Dashboard filters">
             <div className="dashboard-copy">
@@ -382,18 +473,53 @@ function App() {
                 {formatNumber(dataset.sites)} sites and{" "}
                 {formatNumber(dataset.businessPartners)} business partners.
               </p>
+              <p className="active-filter-line">{filterSummary}</p>
             </div>
 
-            <div className="filter-group">
-              <button className="filter-button filter-button-active" type="button">
-                Current portfolio
-              </button>
-              <button className="filter-button" type="button">
-                All channels
-              </button>
-              <button className="filter-button" type="button">
-                All commodities
-              </button>
+            <div className="filter-group" aria-label="Dashboard filters">
+              <label className="filter-control">
+                <span>Scope</span>
+                <select
+                  value={filters.scope}
+                  onChange={(event) => updateFilter("scope", event.target.value)}
+                >
+                  {availableFilters.availableScopes.map((scope) => (
+                    <option key={scope.value} value={scope.value}>
+                      {scope.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="filter-control">
+                <span>Channel</span>
+                <select
+                  value={filters.channel}
+                  onChange={(event) => updateFilter("channel", event.target.value)}
+                >
+                  <option value="">All channels</option>
+                  {availableFilters.channels.map((channel) => (
+                    <option key={channel.label} value={channel.label}>
+                      {channel.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="filter-control">
+                <span>Commodity</span>
+                <select
+                  value={filters.commodity}
+                  onChange={(event) => updateFilter("commodity", event.target.value)}
+                >
+                  <option value="">All commodities</option>
+                  {availableFilters.commodities.map((commodity) => (
+                    <option key={commodity.label} value={commodity.label}>
+                      {commodity.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
           </section>
 
@@ -489,6 +615,9 @@ function App() {
             </article>
           </section>
         </div>
+        ) : (
+          <SelectedAnalysisPage />
+        )}
       </section>
     </main>
   );

@@ -36,7 +36,27 @@ Backend URL:
 ```text
 http://localhost:5000/api/health
 http://localhost:5050/api/health - on mac as 5000 is for AirPlay
+http://localhost:5050/api/dashboard/summary
 
+```
+
+Dashboard filters are API-backed:
+
+```text
+http://localhost:5050/api/dashboard/summary?scope=current
+http://localhost:5050/api/dashboard/summary?scope=all&channel=Digital&commodity=ELE
+```
+
+Deep-dive analysis pages are also API-backed:
+
+```text
+http://localhost:5050/api/analysis/retention
+http://localhost:5050/api/analysis/commercial
+http://localhost:5050/api/analysis/portfolio
+http://localhost:5050/api/analysis/products
+http://localhost:5050/api/analysis/digital
+http://localhost:5050/api/analysis/agents
+http://localhost:5050/api/analysis/quality
 ```
 
 Expected response:
@@ -117,5 +137,8 @@ After pushing to GitHub and pulling on the other machine:
 
 ## Notes
 
-- No database, Excel file, Oracle, Databricks, authentication, or analytics code is included yet.
+- The dashboard summary API currently reads `Dataset/synthetic_energy_customer_sites.csv` through a replaceable backend data-source adapter.
+- Use `CUSTOMER_SITES_SOURCE=csv` for the current local CSV source. `CUSTOMER_SITES_CSV_PATH=/path/to/file.csv` can override the default file path.
+- A `CUSTOMER_SITES_SOURCE=databricks` adapter placeholder is present so the later table connection can replace CSV access without changing the frontend API contract.
+- No Oracle connection, Databricks connection implementation, authentication, or production analytics orchestration is included yet.
 - The frontend uses `VITE_API_BASE_URL` when provided, otherwise it calls port `5050` on the same host used to open the UI.
