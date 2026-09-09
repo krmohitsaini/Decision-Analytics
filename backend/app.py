@@ -11,8 +11,9 @@ load_dotenv()
 def create_app():
     app = Flask(__name__)
 
-    cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:5173")
-    CORS(app, resources={r"/api/*": {"origins": [origin.strip() for origin in cors_origins.split(",")]}})
+    cors_origins = os.getenv("CORS_ORIGINS", "*")
+    origins = "*" if cors_origins == "*" else [origin.strip() for origin in cors_origins.split(",")]
+    CORS(app, resources={r"/api/*": {"origins": origins}})
 
     @app.get("/api/health")
     def health():

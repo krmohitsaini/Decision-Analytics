@@ -27,7 +27,8 @@ pip install -r requirements.txt
 
 -- it'll run the backend on default port 5000
 python app.py
-else, run FLASK_PORT=5050 python app.py
+else, run -
+FLASK_PORT=5050 python app.py
 ```
 
 Backend URL:
@@ -75,6 +76,19 @@ http://localhost:5173
 
 The page should show the backend status from the Flask API.
 
+By default, the frontend expects the backend on port `5050` using the same host you used to open the UI:
+
+```text
+http://localhost:5173      -> calls http://localhost:5050
+http://192.168.x.x:5173    -> calls http://192.168.x.x:5050
+```
+
+If your backend is running on a different port, start the frontend with:
+
+```bash
+VITE_API_BASE_URL=http://localhost:<backend-port> npm run dev
+```
+
 ## If Port 5000 Is Already In Use
 
 On macOS, port `5000` may already be used by AirPlay Receiver. You can either disable that service or run the backend on another port:
@@ -104,4 +118,4 @@ After pushing to GitHub and pulling on the other machine:
 ## Notes
 
 - No database, Excel file, Oracle, Databricks, authentication, or analytics code is included yet.
-- The frontend uses `VITE_API_BASE_URL` when provided, otherwise it defaults to `http://localhost:5000`.
+- The frontend uses `VITE_API_BASE_URL` when provided, otherwise it calls port `5050` on the same host used to open the UI.
