@@ -1,6 +1,11 @@
 from .client import LlmClientError, generate_structured_json
 from .config import get_llm_settings
-from .prompts import DASHBOARD_INSIGHT_SCHEMA, build_dashboard_insight_prompts
+from .prompts import (
+    DASHBOARD_INSIGHT_SCHEMA,
+    DASHBOARD_QUESTION_SCHEMA,
+    build_dashboard_insight_prompts,
+    build_dashboard_question_prompts,
+)
 
 
 REQUIRED_INSIGHT_FIELDS = ("summary", "drivers", "risks", "actions", "caveats")
@@ -35,38 +40,29 @@ def _normalize_dashboard_insights(value):
     return normalized
 
 
-def _fallback_dashboard_insights(summary):
-    kpis = summary.get("kpis", {})
-    mixes = summary.get("mixes", {})
-    outcomes = mixes.get("outcomes", [])
-    channels = mixes.get("channels", [])
-    top_outcome = outcomes[0]["label"] if outcomes else "the leading outcome"
-    top_channel = channels[0]["label"] if channels else "the leading channel"
+def _normalize_dashboard_question(value):
+    if not isinstance(value, dict):
+        raise LlmClientError("LLM response must be a JSON object.")
 
-    return {
-        "summary": (
-            f"Portfolio health is anchored by a {kpis.get('activeSiteRate', 0)}% active site "
-            f"rate, with churn at {kpis.get('churnRate', 0)}% and digital adoption at "
-            f"{kpis.get('digitalAdoptionRate', 0)}%."
-        ),
-        "drivers": [
-            f"{top_channel} is the largest visible channel in the selected view.",
-            f"{top_outcome} is the largest visible contract outcome in the selected view.",
-            f"Digital adoption is {kpis.get('digitalAdoptionRate', 0)}% across distinct business partners.",
-        ],
-        "risks": [
-            f"Churn is {kpis.get('churnRate', 0)}% of closed contract episodes.",
-            f"Leakage is {kpis.get('leakageRate', 0)}% of selected contract episodes.",
-        ],
-        "actions": [
-            "Prioritize churn review by channel before renewal planning.",
-            "Inspect leakage cases by same-day and early-life drops.",
-            "Target non-digital business partners for portal adoption campaigns.",
-        ],
-        "caveats": [
-            "This fallback insight is rule-based because no LLM response was used.",
-        ],
+    missing_fields = [
+        field
+        for field in ("answer", "supportingMetrics", "caveats", "suggestedFollowUps")
+        if field not in value
+    ]
+    if missing_fields:
+        raise LlmClientError(f"LLM response is missing fields: {', '.join(missing_fields)}")
+
+    normalized = {
+        "answer": str(value.get("answer", "")).strip(),
+        "supportingMetrics": _string_items(value.get("supportingMetrics")),
+        "caveats": _string_items(value.get("caveats")),
+        "suggestedFollowUps": _string_items(value.get("suggestedFollowUps")),
     }
+
+    if not normalized["answer"]:
+        raise LlmClientError("LLM response answer is empty.")
+
+    return normalized
 
 
 class LlmInsightService:
@@ -81,12 +77,6 @@ class LlmInsightService:
         summary = self.dashboard_service.load_summary(scope=scope, channel=channel, commodity=commodity)
 
         if not self.settings.enabled:
-            if use_fallback:
-                return {
-                    "mode": "fallback",
-                    "config": self.public_config(),
-                    "insights": _fallback_dashboard_insights(summary),
-                }
             raise LlmClientError("LLM provider is disabled.")
 
         system_prompt, user_prompt = build_dashboard_insight_prompts(summary)
@@ -101,4 +91,31 @@ class LlmInsightService:
             "mode": "llm",
             "config": self.public_config(),
             "insights": _normalize_dashboard_insights(insights),
+        }
+
+    def ask_dashboard_question(self, question, scope="current", channel="", commodity=""):
+        if not self.settings.enabled:
+            raise LlmClientError("LLM provider is disabled.")
+
+        normalized_question = (question or "").strip()
+        if not normalized_question:
+            raise LlmClientError("Question is required.")
+
+        summary = self.dashboard_service.load_summary(
+            scope=scope,
+            channel=channel,
+            commodity=commodity,
+        )
+        system_prompt, user_prompt = build_dashboard_question_prompts(summary, normalized_question)
+        answer = generate_structured_json(
+            self.settings,
+            system_prompt,
+            user_prompt,
+            DASHBOARD_QUESTION_SCHEMA,
+        )
+
+        return {
+            "mode": "llm",
+            "config": self.public_config(),
+            "answer": _normalize_dashboard_question(answer),
         }

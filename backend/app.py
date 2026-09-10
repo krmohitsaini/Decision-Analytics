@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
+from analytics.baseline_insights import build_dashboard_baseline_insights
 from analytics.deep_dive_pages import DeepDivePagesService
 from analytics.dashboard_summary import DashboardSummaryService
 from data_sources.customer_sites import CustomerSitesSourceError, build_customer_sites_source
@@ -45,6 +46,26 @@ def create_app():
         except CustomerSitesSourceError as error:
             return jsonify({"error": str(error)}), 503
 
+    @app.get("/api/dashboard/insights")
+    def dashboard_baseline_insights():
+        if not dashboard_service.is_available():
+            return jsonify({"error": "Dashboard data source is not available"}), 503
+
+        try:
+            summary = dashboard_service.load_summary(
+                scope=request.args.get("scope", "current"),
+                channel=request.args.get("channel", ""),
+                commodity=request.args.get("commodity", ""),
+            )
+            return jsonify(
+                {
+                    "mode": "baseline",
+                    "insights": build_dashboard_baseline_insights(summary),
+                }
+            )
+        except CustomerSitesSourceError as error:
+            return jsonify({"error": str(error)}), 503
+
     @app.get("/api/llm/config")
     def llm_config():
         return jsonify(llm_insight_service.public_config())
@@ -59,6 +80,33 @@ def create_app():
         try:
             return jsonify(
                 llm_insight_service.dashboard_insights(
+                    scope=payload.get("scope", request.args.get("scope", "current")),
+                    channel=payload.get("channel", request.args.get("channel", "")),
+                    commodity=payload.get("commodity", request.args.get("commodity", "")),
+                    use_fallback=False,
+                )
+            )
+        except CustomerSitesSourceError as error:
+            return jsonify({"error": str(error)}), 503
+        except LlmClientError as error:
+            return jsonify(
+                {
+                    "error": str(error),
+                    "config": llm_insight_service.public_config(),
+                }
+            ), 502
+
+    @app.post("/api/llm/dashboard-question")
+    def dashboard_llm_question():
+        if not dashboard_service.is_available():
+            return jsonify({"error": "Dashboard data source is not available"}), 503
+
+        payload = request.get_json(silent=True) or {}
+
+        try:
+            return jsonify(
+                llm_insight_service.ask_dashboard_question(
+                    question=payload.get("question", ""),
                     scope=payload.get("scope", request.args.get("scope", "current")),
                     channel=payload.get("channel", request.args.get("channel", "")),
                     commodity=payload.get("commodity", request.args.get("commodity", "")),

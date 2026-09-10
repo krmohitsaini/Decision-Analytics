@@ -234,13 +234,61 @@ function buildDashboardSummaryUrl(filters) {
   return `${API_BASE_URL}/api/dashboard/summary?${params.toString()}`;
 }
 
-function AiInsightGroup({ title, items }) {
+function buildDashboardInsightsUrl(filters) {
+  const params = new URLSearchParams();
+
+  params.set("scope", filters.scope);
+
+  if (filters.channel) {
+    params.set("channel", filters.channel);
+  }
+
+  if (filters.commodity) {
+    params.set("commodity", filters.commodity);
+  }
+
+  return `${API_BASE_URL}/api/dashboard/insights?${params.toString()}`;
+}
+
+function buildBaselineInsights(summary) {
+  const kpis = summary.kpis || {};
+  const mixes = summary.mixes || {};
+  const topChannel = mixes.channels?.[0]?.label || "The leading channel";
+  const topOutcome = mixes.outcomes?.[0]?.label || "The leading outcome";
+
+  return {
+    summary: `Portfolio health is anchored by a ${formatPercent(
+      kpis.activeSiteRate,
+    )} active site rate, with churn at ${formatPercent(
+      kpis.churnRate,
+    )} and digital adoption at ${formatPercent(kpis.digitalAdoptionRate)}.`,
+    drivers: [
+      `${topChannel} is the largest visible channel in the selected view.`,
+      `${topOutcome} is the largest visible contract outcome in the selected view.`,
+      `Digital adoption is ${formatPercent(
+        kpis.digitalAdoptionRate,
+      )} across distinct business partners.`,
+    ],
+    risks: [
+      `Churn is ${formatPercent(kpis.churnRate)} of closed contract episodes.`,
+      `Leakage is ${formatPercent(kpis.leakageRate)} of selected contract episodes.`,
+    ],
+    actions: [
+      "Prioritize churn review by channel before renewal planning.",
+      "Inspect leakage cases by same-day and early-life drops.",
+      "Target non-digital business partners for portal adoption campaigns.",
+    ],
+    caveats: ["These baseline insights are deterministic and do not use an LLM."],
+  };
+}
+
+function InsightGroup({ title, items }) {
   if (!items?.length) {
     return null;
   }
 
   return (
-    <div className="ai-insight-group">
+    <div className="insight-group">
       <p>{title}</p>
       <ul>
         {items.map((item) => (
@@ -248,6 +296,30 @@ function AiInsightGroup({ title, items }) {
         ))}
       </ul>
     </div>
+  );
+}
+
+function CopilotIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+    >
+      <path d="M12 3v3" />
+      <path d="M12 18v3" />
+      <path d="m4.9 4.9 2.1 2.1" />
+      <path d="m17 17 2.1 2.1" />
+      <path d="M3 12h3" />
+      <path d="M18 12h3" />
+      <path d="m4.9 19.1 2.1-2.1" />
+      <path d="m17 7 2.1-2.1" />
+      <path d="M9 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0Z" />
+    </svg>
   );
 }
 
@@ -316,9 +388,14 @@ function App() {
   const [summaryError, setSummaryError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [llmConfig, setLlmConfig] = useState(null);
-  const [aiInsights, setAiInsights] = useState(null);
-  const [aiError, setAiError] = useState("");
-  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [baselineInsights, setBaselineInsights] = useState(null);
+  const [isCopilotOpen, setIsCopilotOpen] = useState(false);
+  const [llmInsights, setLlmInsights] = useState(null);
+  const [llmError, setLlmError] = useState("");
+  const [isLlmLoading, setIsLlmLoading] = useState(false);
+  const [chatQuestion, setChatQuestion] = useState("");
+  const [chatMessages, setChatMessages] = useState([]);
+  const [isQuestionLoading, setIsQuestionLoading] = useState(false);
 
   useEffect(() => {
     async function loadDashboard() {
@@ -371,8 +448,22 @@ function App() {
   }, []);
 
   useEffect(() => {
-    setAiInsights(null);
-    setAiError("");
+    async function loadBaselineInsights() {
+      try {
+        const response = await fetch(buildDashboardInsightsUrl(filters));
+        if (response.ok) {
+          const payload = await response.json();
+          setBaselineInsights(payload.insights);
+        }
+      } catch {
+        setBaselineInsights(null);
+      }
+    }
+
+    loadBaselineInsights();
+    setLlmInsights(null);
+    setLlmError("");
+    setChatMessages([]);
   }, [filters]);
 
   const dashboardSummary = summary || fallbackSummary;
@@ -446,9 +537,9 @@ function App() {
     }));
   }
 
-  async function generateDashboardInsights() {
-    setIsAiLoading(true);
-    setAiError("");
+  async function generateLlmInsights() {
+    setIsLlmLoading(true);
+    setLlmError("");
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/llm/dashboard-insights`, {
@@ -461,21 +552,65 @@ function App() {
       const payload = await response.json();
 
       if (!response.ok) {
-        setAiError(payload.error || "Unable to generate AI insights.");
+        setLlmError(payload.error || "Unable to generate LLM insights.");
         return;
       }
 
-      setAiInsights(payload);
+      setLlmInsights(payload.insights);
       setLlmConfig(payload.config || llmConfig);
     } catch {
-      setAiError("Unable to reach the backend AI insights endpoint.");
+      setLlmError("Unable to reach the backend LLM insights endpoint.");
     } finally {
-      setIsAiLoading(false);
+      setIsLlmLoading(false);
+    }
+  }
+
+  async function askDashboardQuestion(event) {
+    event.preventDefault();
+
+    const question = chatQuestion.trim();
+    if (!question) {
+      return;
+    }
+
+    setIsQuestionLoading(true);
+    setLlmError("");
+    setChatQuestion("");
+    setChatMessages((messages) => [...messages, { role: "user", text: question }]);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/llm/dashboard-question`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ...filters, question }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        setLlmError(payload.error || "Unable to answer the question.");
+        return;
+      }
+
+      setLlmConfig(payload.config || llmConfig);
+      setChatMessages((messages) => [
+        ...messages,
+        {
+          role: "assistant",
+          answer: payload.answer,
+        },
+      ]);
+    } catch {
+      setLlmError("Unable to reach the backend LLM question endpoint.");
+    } finally {
+      setIsQuestionLoading(false);
     }
   }
 
   const SelectedAnalysisPage = analysisPageComponents[selectedPage];
-  const currentInsights = aiInsights?.insights;
+  const defaultInsights = baselineInsights || buildBaselineInsights(dashboardSummary);
+  const isLlmConfigured = Boolean(llmConfig?.enabled);
 
   return (
     <main className="app-shell">
@@ -657,51 +792,24 @@ function App() {
               <BarList items={mixes.commodities} formatter={compactNumber} />
             </article>
 
-            <article className="panel insight-panel ai-panel">
+            <article className="panel insight-panel baseline-insight-panel">
               <div className="panel-header">
                 <div>
-                  <p className="panel-kicker">AI Copilot</p>
-                  <h3>Executive Insights</h3>
+                  <p className="panel-kicker">Baseline Insights</p>
+                  <h3>Executive Actions</h3>
                 </div>
-                <button
-                  className="ai-generate-button"
-                  disabled={isAiLoading}
-                  onClick={generateDashboardInsights}
-                  type="button"
-                >
-                  {isAiLoading ? "Working" : currentInsights ? "Refresh" : "Generate"}
-                </button>
               </div>
 
-              {!currentInsights && !aiError && (
-                <div className="ai-empty-state">
-                  <strong>Backend-selected LLM</strong>
-                  <p>
-                    {llmConfig?.enabled
-                      ? `${llmConfig.providerLabel} / ${llmConfig.model}`
-                      : "Disabled; rule-based fallback available"}
-                  </p>
-                </div>
-              )}
-
-              {aiError && <div className="ai-error">{aiError}</div>}
-
-              {currentInsights && (
-                <div className="ai-insight-content">
-                  <p className="ai-summary">{currentInsights.summary}</p>
-                  <AiInsightGroup title="Drivers" items={currentInsights.drivers} />
-                  <AiInsightGroup title="Risks" items={currentInsights.risks} />
-                  <AiInsightGroup title="Actions" items={currentInsights.actions} />
-                </div>
-              )}
+              <div className="insight-content baseline-content">
+                <p className="insight-summary">{defaultInsights.summary}</p>
+                <InsightGroup title="Drivers" items={defaultInsights.drivers} />
+                <InsightGroup title="Risks" items={defaultInsights.risks} />
+                <InsightGroup title="Actions" items={defaultInsights.actions} />
+              </div>
 
               <div className="data-footnote">
-                <span>{aiInsights?.mode === "llm" ? "LLM provider" : "Insight mode"}</span>
-                <strong>
-                  {aiInsights?.mode === "llm" && aiInsights.config
-                    ? `${aiInsights.config.providerLabel} / ${aiInsights.config.model}`
-                    : dataset.grain}
-                </strong>
+                <span>Insight mode</span>
+                <strong>{defaultInsights.caveats?.[0] || dataset.grain}</strong>
               </div>
             </article>
           </section>
@@ -710,6 +818,100 @@ function App() {
           <SelectedAnalysisPage />
         )}
       </section>
+
+      {selectedPage === "dashboard" && (
+        <>
+          <button
+            className="copilot-fab"
+            onClick={() => setIsCopilotOpen((isOpen) => !isOpen)}
+            type="button"
+            aria-label="Open LLM copilot"
+          >
+            <CopilotIcon />
+          </button>
+
+          {isCopilotOpen && (
+            <aside className="copilot-popover" aria-label="LLM copilot">
+              <div className="copilot-header">
+                <div>
+                  <p className="panel-kicker">LLM Copilot</p>
+                  <h3>Ask the Dashboard</h3>
+                </div>
+                <button
+                  className="copilot-close"
+                  onClick={() => setIsCopilotOpen(false)}
+                  type="button"
+                  aria-label="Close LLM copilot"
+                >
+                  X
+                </button>
+              </div>
+
+              <div className={`copilot-status${isLlmConfigured ? "" : " copilot-status-muted"}`}>
+                <span>{isLlmConfigured ? "Connected" : "Not configured"}</span>
+                <strong>
+                  {isLlmConfigured
+                    ? `${llmConfig.providerLabel} / ${llmConfig.model}`
+                    : "Set LLM_PROVIDER and key in backend/.env"}
+                </strong>
+              </div>
+
+              <button
+                className="copilot-generate"
+                disabled={!isLlmConfigured || isLlmLoading}
+                onClick={generateLlmInsights}
+                type="button"
+              >
+                {isLlmLoading ? "Generating" : "Generate LLM Insights"}
+              </button>
+
+              {llmError && <div className="copilot-error">{llmError}</div>}
+
+              {llmInsights && (
+                <div className="copilot-section">
+                  <p className="insight-summary">{llmInsights.summary}</p>
+                  <InsightGroup title="Drivers" items={llmInsights.drivers} />
+                  <InsightGroup title="Risks" items={llmInsights.risks} />
+                  <InsightGroup title="Actions" items={llmInsights.actions} />
+                </div>
+              )}
+
+              <div className="copilot-chat">
+                {chatMessages.map((message, index) => (
+                  <div
+                    className={`chat-message chat-message-${message.role}`}
+                    key={`${message.role}-${index}`}
+                  >
+                    {message.text && <p>{message.text}</p>}
+                    {message.answer && (
+                      <>
+                        <p>{message.answer.answer}</p>
+                        <InsightGroup title="Supporting Metrics" items={message.answer.supportingMetrics} />
+                        <InsightGroup title="Caveats" items={message.answer.caveats} />
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <form className="copilot-form" onSubmit={askDashboardQuestion}>
+                <input
+                  disabled={!isLlmConfigured || isQuestionLoading}
+                  onChange={(event) => setChatQuestion(event.target.value)}
+                  placeholder="Question about this dashboard"
+                  value={chatQuestion}
+                />
+                <button
+                  disabled={!isLlmConfigured || isQuestionLoading || !chatQuestion.trim()}
+                  type="submit"
+                >
+                  {isQuestionLoading ? "..." : "Ask"}
+                </button>
+              </form>
+            </aside>
+          )}
+        </>
+      )}
     </main>
   );
 }

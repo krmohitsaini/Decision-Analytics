@@ -45,6 +45,7 @@ Dashboard filters are API-backed:
 ```text
 http://localhost:5050/api/dashboard/summary?scope=current
 http://localhost:5050/api/dashboard/summary?scope=all&channel=Digital&commodity=ELE
+http://localhost:5050/api/dashboard/insights?scope=current
 ```
 
 Deep-dive analysis pages are also API-backed:
@@ -65,6 +66,7 @@ is intentionally backend-only, so API keys never need to be exposed to the front
 ```text
 http://localhost:5050/api/llm/config
 http://localhost:5050/api/llm/dashboard-insights
+http://localhost:5050/api/llm/dashboard-question
 ```
 
 Set the backend provider in `backend/.env`:
@@ -86,9 +88,11 @@ LOCAL_LLM_MODEL=llama3.1
 LOCAL_LLM_API_KEY=local
 ```
 
-The LLM code is isolated in `backend/llm/` and receives curated dashboard JSON
-from the analytics service. KPI calculations remain deterministic Python logic;
-the model only explains the already-computed metrics.
+The always-on dashboard insight card uses deterministic baseline logic from
+`backend/analytics/baseline_insights.py`. The LLM popup uses isolated code in
+`backend/llm/` and receives curated dashboard JSON from the analytics service.
+KPI calculations remain deterministic Python logic; the model only explains the
+already-computed metrics.
 
 Expected response:
 

@@ -34,6 +34,33 @@ DASHBOARD_INSIGHT_SCHEMA = {
     "required": ["summary", "drivers", "risks", "actions", "caveats"],
 }
 
+DASHBOARD_QUESTION_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "answer": {"type": "string"},
+        "supportingMetrics": {
+            "type": "array",
+            "items": {"type": "string"},
+            "minItems": 1,
+            "maxItems": 5,
+        },
+        "caveats": {
+            "type": "array",
+            "items": {"type": "string"},
+            "minItems": 1,
+            "maxItems": 3,
+        },
+        "suggestedFollowUps": {
+            "type": "array",
+            "items": {"type": "string"},
+            "minItems": 1,
+            "maxItems": 3,
+        },
+    },
+    "required": ["answer", "supportingMetrics", "caveats", "suggestedFollowUps"],
+}
+
 
 def build_dashboard_insight_prompts(summary):
     system_prompt = (
@@ -47,6 +74,24 @@ def build_dashboard_insight_prompts(summary):
         "Generate dashboard insights from this metric payload. Keep the summary under "
         "55 words. Each driver, risk, action, and caveat must be one sentence and must "
         "include specific metric values when relevant.\n\n"
+        f"{json.dumps(summary, sort_keys=True)}"
+    )
+
+    return system_prompt, user_prompt
+
+
+def build_dashboard_question_prompts(summary, question):
+    system_prompt = (
+        "You are an analytics copilot answering questions about an energy customer "
+        "portfolio dashboard. Use only the supplied JSON metrics. If the supplied "
+        "metrics cannot answer the question, say what is missing instead of guessing. "
+        "Do not invent data, causal claims, forecasts, benchmark comparisons, or "
+        "customer facts that are not present. Return only valid JSON matching the "
+        "requested schema."
+    )
+    user_prompt = (
+        f"Question: {question}\n\n"
+        "Dashboard metric payload:\n"
         f"{json.dumps(summary, sort_keys=True)}"
     )
 
