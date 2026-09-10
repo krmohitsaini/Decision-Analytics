@@ -59,6 +59,37 @@ http://localhost:5050/api/analysis/agents
 http://localhost:5050/api/analysis/quality
 ```
 
+LLM-backed dashboard insights are available through the backend. Provider selection
+is intentionally backend-only, so API keys never need to be exposed to the frontend:
+
+```text
+http://localhost:5050/api/llm/config
+http://localhost:5050/api/llm/dashboard-insights
+```
+
+Set the backend provider in `backend/.env`:
+
+```text
+LLM_PROVIDER=disabled   # disabled, openai, chatgpt, google, local
+
+# OpenAI / ChatGPT
+OPENAI_API_KEY=...
+OPENAI_MODEL=gpt-5-mini
+
+# Google Gemini
+GOOGLE_API_KEY=...
+GOOGLE_LLM_MODEL=gemini-3.7-flash
+
+# Local OpenAI-compatible server, such as Ollama or LM Studio
+LOCAL_LLM_BASE_URL=http://localhost:11434/v1
+LOCAL_LLM_MODEL=llama3.1
+LOCAL_LLM_API_KEY=local
+```
+
+The LLM code is isolated in `backend/llm/` and receives curated dashboard JSON
+from the analytics service. KPI calculations remain deterministic Python logic;
+the model only explains the already-computed metrics.
+
 Expected response:
 
 ```json

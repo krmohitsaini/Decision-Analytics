@@ -234,6 +234,23 @@ function buildDashboardSummaryUrl(filters) {
   return `${API_BASE_URL}/api/dashboard/summary?${params.toString()}`;
 }
 
+function AiInsightGroup({ title, items }) {
+  if (!items?.length) {
+    return null;
+  }
+
+  return (
+    <div className="ai-insight-group">
+      <p>{title}</p>
+      <ul>
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function KpiCard({ label, value, helper, tone = "neutral" }) {
   return (
     <article className={`kpi-card kpi-card-${tone}`}>
@@ -298,6 +315,10 @@ function App() {
   const [error, setError] = useState("");
   const [summaryError, setSummaryError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [llmConfig, setLlmConfig] = useState(null);
+  const [aiInsights, setAiInsights] = useState(null);
+  const [aiError, setAiError] = useState("");
+  const [isAiLoading, setIsAiLoading] = useState(false);
 
   useEffect(() => {
     async function loadDashboard() {
@@ -332,6 +353,26 @@ function App() {
     }
 
     loadDashboard();
+  }, [filters]);
+
+  useEffect(() => {
+    async function loadLlmConfig() {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/llm/config`);
+        if (response.ok) {
+          setLlmConfig(await response.json());
+        }
+      } catch {
+        setLlmConfig(null);
+      }
+    }
+
+    loadLlmConfig();
+  }, []);
+
+  useEffect(() => {
+    setAiInsights(null);
+    setAiError("");
   }, [filters]);
 
   const dashboardSummary = summary || fallbackSummary;
@@ -405,7 +446,36 @@ function App() {
     }));
   }
 
+  async function generateDashboardInsights() {
+    setIsAiLoading(true);
+    setAiError("");
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/llm/dashboard-insights`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(filters),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        setAiError(payload.error || "Unable to generate AI insights.");
+        return;
+      }
+
+      setAiInsights(payload);
+      setLlmConfig(payload.config || llmConfig);
+    } catch {
+      setAiError("Unable to reach the backend AI insights endpoint.");
+    } finally {
+      setIsAiLoading(false);
+    }
+  }
+
   const SelectedAnalysisPage = analysisPageComponents[selectedPage];
+  const currentInsights = aiInsights?.insights;
 
   return (
     <main className="app-shell">
@@ -587,30 +657,51 @@ function App() {
               <BarList items={mixes.commodities} formatter={compactNumber} />
             </article>
 
-            <article className="panel insight-panel">
+            <article className="panel insight-panel ai-panel">
               <div className="panel-header">
                 <div>
-                  <p className="panel-kicker">Focus</p>
-                  <h3>Executive Actions</h3>
+                  <p className="panel-kicker">AI Copilot</p>
+                  <h3>Executive Insights</h3>
                 </div>
+                <button
+                  className="ai-generate-button"
+                  disabled={isAiLoading}
+                  onClick={generateDashboardInsights}
+                  type="button"
+                >
+                  {isAiLoading ? "Working" : currentInsights ? "Refresh" : "Generate"}
+                </button>
               </div>
-              <div className="action-list">
-                <div>
-                  <span className="action-dot action-dot-red" />
-                  <p>Review churn-heavy channels before renewal planning.</p>
+
+              {!currentInsights && !aiError && (
+                <div className="ai-empty-state">
+                  <strong>Backend-selected LLM</strong>
+                  <p>
+                    {llmConfig?.enabled
+                      ? `${llmConfig.providerLabel} / ${llmConfig.model}`
+                      : "Disabled; rule-based fallback available"}
+                  </p>
                 </div>
-                <div>
-                  <span className="action-dot action-dot-amber" />
-                  <p>Track leakage by same-day and five-day drops.</p>
+              )}
+
+              {aiError && <div className="ai-error">{aiError}</div>}
+
+              {currentInsights && (
+                <div className="ai-insight-content">
+                  <p className="ai-summary">{currentInsights.summary}</p>
+                  <AiInsightGroup title="Drivers" items={currentInsights.drivers} />
+                  <AiInsightGroup title="Risks" items={currentInsights.risks} />
+                  <AiInsightGroup title="Actions" items={currentInsights.actions} />
                 </div>
-                <div>
-                  <span className="action-dot action-dot-green" />
-                  <p>Move non-digital business partners into portal adoption campaigns.</p>
-                </div>
-              </div>
+              )}
+
               <div className="data-footnote">
-                <span>Dataset grain</span>
-                <strong>{dataset.grain}</strong>
+                <span>{aiInsights?.mode === "llm" ? "LLM provider" : "Insight mode"}</span>
+                <strong>
+                  {aiInsights?.mode === "llm" && aiInsights.config
+                    ? `${aiInsights.config.providerLabel} / ${aiInsights.config.model}`
+                    : dataset.grain}
+                </strong>
               </div>
             </article>
           </section>
