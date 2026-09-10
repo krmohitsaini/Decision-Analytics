@@ -1,4 +1,5 @@
 import json
+import socket
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -25,7 +26,7 @@ def _post_json(url, payload, headers, timeout_seconds):
         raise LlmClientError(f"LLM provider returned HTTP {error.code}: {details}") from error
     except URLError as error:
         raise LlmClientError(f"Unable to reach LLM provider: {error.reason}") from error
-    except TimeoutError as error:
+    except (TimeoutError, socket.timeout) as error:
         raise LlmClientError("LLM provider request timed out.") from error
     except json.JSONDecodeError as error:
         raise LlmClientError("LLM provider returned invalid JSON.") from error
@@ -95,7 +96,7 @@ def _text_from_google_response(response):
 def _openai_compatible_response(settings, system_prompt, user_prompt, response_schema):
     response_format = {"type": "json_object"}
 
-    if settings.provider in {PROVIDER_OPENAI, PROVIDER_CHATGPT}:
+    if settings.provider in {PROVIDER_OPENAI, PROVIDER_CHATGPT, PROVIDER_LOCAL}:
         response_format = {
             "type": "json_schema",
             "json_schema": {
@@ -111,7 +112,6 @@ def _openai_compatible_response(settings, system_prompt, user_prompt, response_s
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        "temperature": 0.2,
         "response_format": response_format,
     }
     headers = {}

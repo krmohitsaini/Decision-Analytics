@@ -31,7 +31,7 @@ class LlmSettings:
 
     @property
     def provider_label(self):
-        if self.provider == PROVIDER_CHATGPT:
+        if self.provider in {PROVIDER_OPENAI, PROVIDER_CHATGPT}:
             return "OpenAI"
 
         return self.provider.title()
