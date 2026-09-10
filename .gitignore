@@ -18,8 +18,5 @@ npm-debug.log*
 # Local generated artifacts
 artifacts/
 
-PLAN.md
-
-# Dummy Datasets
-Dataset
-Dataset/
+# Large local datasets
+Dataset/synthetic_energy_customer_sites.csv
